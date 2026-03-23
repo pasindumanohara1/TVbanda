@@ -1,0 +1,987 @@
+# TVbanda - Architecture Specification (CA)
+## Technical Architecture & System Design
+
+---
+
+## 📐 System Overview
+
+### Architecture Pattern
+**Frontend-Only SPA (Single Page Application)**
+- No backend server required
+- Client-side data aggregation from iptv-org APIs
+- Local storage for user state persistence
+- Service Worker for offline capabilities
+
+### High-Level Architecture Diagram
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CLIENT BROWSER                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   React UI  │  │  Zustand   │  │    Service Worker     │  │
+│  │  Components │  │    Store   │  │   (Caching Layer)       │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────────────┘  │
+│         │                │                                      │
+│  ┌──────▼──────┐  ┌──────▼──────┐                              │
+│  │  hls.js     │  │  iptvService │                              │
+│  │  Player     │  │   (API Layer)│                              │
+│  └──────┬──────┘  └──────┬──────┘                              │
+│         │                │                                      │
+└─────────┼────────────────┼──────────────────────────────────────┘
+          │                │
+          │    ┌───────────▼───────────┐
+          │    │    iptv-org API       │
+          │    │  ┌─────────────────┐  │
+          └────┼─▶│  channels.json  │  │
+               │  │  streams.json   │  │
+               │  │  categories.json│  │
+               │  └─────────────────┘  │
+               └─────────────────────────┘
+```
+
+---
+
+## 🗂️ Project Structure
+
+```
+tvbanda/
+├── public/
+│   ├── manifest.json          # PWA manifest
+│   ├── icons/                 # App icons (192x192, 512x512)
+│   └── sw.js                  # Service Worker (generated)
+│
+├── src/
+│   ├── components/            # React components
+│   │   ├── ui/               # Reusable UI components
+│   │   │   ├── GlassCard.tsx
+│   │   │   ├── NeonButton.tsx
+│   │   │   ├── LoadingSpinner.tsx
+│   │   │   └── SearchInput.tsx
+│   │   │
+│   │   ├── player/           # Video player components
+│   │   │   ├── VideoPlayer.tsx
+│   │   │   ├── PlayerControls.tsx
+│   │   │   ├── VolumeControl.tsx
+│   │   │   └── QualitySelector.tsx
+│   │   │
+│   │   ├── channel/          # Channel-related components
+│   │   │   ├── ChannelCard.tsx
+│   │   │   ├── ChannelGrid.tsx
+│   │   │   ├── ChannelList.tsx
+│   │   │   └── ChannelInfo.tsx
+│   │   │
+│   │   ├── layout/           # Layout components
+│   │   │   ├── Header.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── MobileNav.tsx
+│   │   │   └── MainLayout.tsx
+│   │   │
+│   │   └── filters/          # Filter components
+│   │       ├── CategoryFilter.tsx
+│   │       ├── CountryFilter.tsx
+│   │       └── SearchFilter.tsx
+│   │
+│   ├── hooks/                 # Custom React hooks
+│   │   ├── useHlsPlayer.ts   # HLS playback management
+│   │   ├── useChannels.ts    # Channel data fetching
+│   │   ├── useFavorites.ts   # Favorites management
+│   │   ├── useLocalStorage.ts # localStorage wrapper
+│   │   ├── useDebounce.ts    # Debounce utility
+│   │   └── useIntersectionObserver.ts # Lazy loading
+│   │
+│   ├── services/              # API services
+│   │   ├── iptvService.ts    # iptv-org API client
+│   │   ├── cacheService.ts   # Caching layer
+│   │   └── streamService.ts  # Stream validation
+│   │
+│   ├── stores/               # State management (Zustand)
+│   │   ├── useChannelStore.ts
+│   │   ├── usePlayerStore.ts
+│   │   └── useUIStore.ts
+│   │
+│   ├── types/                # TypeScript types
+│   │   ├── channel.ts
+│   │   ├── stream.ts
+│   │   ├── api.ts
+│   │   └── user.ts
+│   │
+│   ├── utils/                 # Utility functions
+│   │   ├── formatters.ts     # Date, time formatters
+│   │   ├── validators.ts     # Input validation
+│   │   ├── constants.ts      # App constants
+│   │   └── helpers.ts        # General helpers
+│   │
+│   ├── styles/               # Global styles
+│   │   ├── globals.css
+│   │   └── animations.css
+│   │
+│   ├── App.tsx               # Root component
+│   ├── main.tsx              # Entry point
+│   └── vite-env.d.ts         # Vite types
+│
+├── index.html
+├── vite.config.ts
+├── tailwind.config.js
+├── tsconfig.json
+├── package.json
+└── README.md
+```
+
+---
+
+## 📊 Data Models
+
+### Channel Entity
+```typescript
+// types/channel.ts
+export interface Channel {
+  id: string;                    // iptv-org channel ID
+  name: string;                  // Display name
+  alt_names?: string[];          // Alternative names
+  network?: string;              // Network operator
+  owners?: string[];             // Content owners
+  country: string;               // ISO 3166-1 alpha-2
+  categories: string[];          // Genre categories
+  is_nsfw: boolean;              // Adult content flag
+  launched?: string;               // Launch date (YYYY-MM-DD)
+  closed?: string;               // Closure date
+  replaced_by?: string;          // Replacement channel ID
+  website?: string;              // Official website URL
+  logo?: string;                 // Logo URL
+}
+
+export interface ChannelWithStreams extends Channel {
+  streams: Stream[];             // Associated streams
+  isFavorite?: boolean;          // User favorite status
+  lastWatched?: Date;            // Last viewed timestamp
+}
+```
+
+### Stream Entity
+```typescript
+// types/stream.ts
+export interface Stream {
+  channel?: string;              // Channel ID
+  feed?: string;                 // Feed ID
+  title: string;                 // Stream title
+  url: string;                   // M3U8 stream URL
+  referrer?: string;             // Required Referer header
+  user_agent?: string;           // Required User-Agent header
+  quality?: string;              // Max quality (e.g., "720p")
+  status: StreamStatus;          // Online/offline status
+  latency?: number;              // Stream latency (ms)
+}
+
+export type StreamStatus = 'online' | 'offline' | 'unknown' | 'checking';
+
+export interface StreamQuality {
+  level: number;                 // hls.js quality level
+  width: number;
+  height: number;
+  bitrate: number;
+  codecs: string;
+}
+```
+
+### API Response Types
+```typescript
+// types/api.ts
+export interface IPTVOrgChannelsResponse {
+  channels: Channel[];
+}
+
+export interface IPTVOrgStreamsResponse {
+  streams: Stream[];
+}
+
+export interface IPTVOrgCategoriesResponse {
+  categories: Category[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface Country {
+  code: string;                  // ISO 3166-1 alpha-2
+  name: string;
+  flag: string;                  // Emoji flag
+}
+```
+
+### User State
+```typescript
+// types/user.ts
+export interface UserPreferences {
+  favorites: string[];           // Channel IDs
+  recentChannels: RecentChannel[];
+  volume: number;                // 0-1
+  isMuted: boolean;
+  autoPlay: boolean;
+  preferredQuality: 'auto' | '1080p' | '720p' | '480p';
+  theme: 'dark' | 'light';
+  language: string;              // UI language
+  hideNSFW: boolean;
+}
+
+export interface RecentChannel {
+  channelId: string;
+  timestamp: number;
+  progress?: number;             // Playback progress (seconds)
+}
+```
+
+---
+
+## 🔌 API Integration
+
+### iptv-org API Endpoints
+```typescript
+// services/iptvService.ts
+const API_BASE = 'https://iptv-org.github.io/api';
+
+class IPTVService {
+  private baseUrl = API_BASE;
+  private cacheDuration = 24 * 60 * 60 * 1000; // 24 hours
+
+  // Fetch all channels
+  async getChannels(): Promise<Channel[]> {
+    const cacheKey = 'channels';
+    const cached = cacheService.get<Channel[]>(cacheKey);
+    if (cached) return cached;
+
+    const response = await fetch(`${this.baseUrl}/channels.json`);
+    const data = await response.json();
+    cacheService.set(cacheKey, data.channels, this.cacheDuration);
+    return data.channels;
+  }
+
+  // Fetch all streams
+  async getStreams(): Promise<Stream[]> {
+    const cacheKey = 'streams';
+    const cached = cacheService.get<Stream[]>(cacheKey);
+    if (cached) return cached;
+
+    const response = await fetch(`${this.baseUrl}/streams.json`);
+    const data = await response.json();
+    cacheService.set(cacheKey, data.streams, this.cacheDuration);
+    return data.streams;
+  }
+
+  // Fetch categories
+  async getCategories(): Promise<Category[]> {
+    const response = await fetch(`${this.baseUrl}/categories.json`);
+    const data = await response.json();
+    return data.categories;
+  }
+
+  // Fetch countries
+  async getCountries(): Promise<Country[]> {
+    const response = await fetch(`${this.baseUrl}/countries.json`);
+    const data = await response.json();
+    return data.countries.map((c: any) => ({
+      code: c.code,
+      name: c.name,
+      flag: getFlagEmoji(c.code)
+    }));
+  }
+
+  // Merge channels with their streams
+  async getChannelsWithStreams(): Promise<ChannelWithStreams[]> {
+    const [channels, streams] = await Promise.all([
+      this.getChannels(),
+      this.getStreams()
+    ]);
+
+    const streamsByChannel = streams.reduce((acc, stream) => {
+      if (stream.channel) {
+        if (!acc[stream.channel]) acc[stream.channel] = [];
+        acc[stream.channel].push(stream);
+      }
+      return acc;
+    }, {} as Record<string, Stream[]>);
+
+    return channels.map(channel => ({
+      ...channel,
+      streams: streamsByChannel[channel.id] || []
+    })).filter(c => c.streams.length > 0); // Only channels with streams
+  }
+}
+
+export const iptvService = new IPTVService();
+```
+
+### Caching Strategy
+```typescript
+// services/cacheService.ts
+class CacheService {
+  private prefix = 'tvbanda_';
+
+  get<T>(key: string): T | null {
+    const item = localStorage.getItem(this.prefix + key);
+    if (!item) return null;
+
+    const { value, expiry } = JSON.parse(item);
+    if (expiry && Date.now() > expiry) {
+      localStorage.removeItem(this.prefix + key);
+      return null;
+    }
+    return value as T;
+  }
+
+  set<T>(key: string, value: T, ttl?: number): void {
+    const item = {
+      value,
+      expiry: ttl ? Date.now() + ttl : null
+    };
+    localStorage.setItem(this.prefix + key, JSON.stringify(item));
+  }
+
+  remove(key: string): void {
+    localStorage.removeItem(this.prefix + key);
+  }
+
+  clear(): void {
+    Object.keys(localStorage)
+      .filter(key => key.startsWith(this.prefix))
+      .forEach(key => localStorage.removeItem(key));
+  }
+}
+
+export const cacheService = new CacheService();
+```
+
+---
+
+## 🎬 Player Architecture
+
+### HLS Player Hook
+```typescript
+// hooks/useHlsPlayer.ts
+import { useEffect, useRef, useCallback, useState } from 'react';
+import Hls from 'hls.js';
+
+interface UseHlsPlayerOptions {
+  onError?: (error: Error) => void;
+  onQualityChange?: (levels: Hls.Level[]) => void;
+  autoPlay?: boolean;
+}
+
+interface UseHlsPlayerReturn {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  hls: Hls | null;
+  isLoading: boolean;
+  isPlaying: boolean;
+  currentQuality: number;
+  availableQualities: Hls.Level[];
+  play: () => void;
+  pause: () => void;
+  setQuality: (level: number) => void;
+  volume: number;
+  setVolume: (vol: number) => void;
+  toggleMute: () => void;
+  isMuted: boolean;
+}
+
+export const useHlsPlayer = (
+  src: string,
+  options: UseHlsPlayerOptions = {}
+): UseHlsPlayerReturn => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentQuality, setCurrentQuality] = useState(-1); // -1 = auto
+  const [availableQualities, setAvailableQualities] = useState<Hls.Level[]>([]);
+  const [volume, setVolumeState] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+
+    setIsLoading(true);
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        manifestLoadingTimeOut: 10000,
+        manifestLoadingMaxRetry: 3
+      });
+
+      hlsRef.current = hls;
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        setAvailableQualities(data.levels);
+        setIsLoading(false);
+        if (options.autoPlay) {
+          video.play().catch(() => setIsPlaying(false));
+        }
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        setCurrentQuality(data.level);
+      });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          options.onError?.(new Error(`HLS Error: ${data.type}`));
+        }
+      });
+
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari)
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+        setIsLoading(false);
+        if (options.autoPlay) video.play();
+      });
+    }
+
+    return () => {
+      hlsRef.current?.destroy();
+      hlsRef.current = null;
+    };
+  }, [src]);
+
+  const play = useCallback(() => {
+    videoRef.current?.play();
+    setIsPlaying(true);
+  }, []);
+
+  const pause = useCallback(() => {
+    videoRef.current?.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const setQuality = useCallback((level: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = level;
+      setCurrentQuality(level);
+    }
+  }, []);
+
+  const setVolume = useCallback((vol: number) => {
+    if (videoRef.current) {
+      videoRef.current.volume = vol;
+      setVolumeState(vol);
+      setIsMuted(vol === 0);
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  }, [isMuted]);
+
+  return {
+    videoRef,
+    hls: hlsRef.current,
+    isLoading,
+    isPlaying,
+    currentQuality,
+    availableQualities,
+    play,
+    pause,
+    setQuality,
+    volume,
+    setVolume,
+    toggleMute,
+    isMuted
+  };
+};
+```
+
+---
+
+## 🏪 State Management (Zustand)
+
+### Channel Store
+```typescript
+// stores/useChannelStore.ts
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface ChannelState {
+  // Data
+  channels: ChannelWithStreams[];
+  categories: Category[];
+  countries: Country[];
+  isLoading: boolean;
+  error: string | null;
+
+  // Filters
+  selectedCategory: string | null;
+  selectedCountry: string | null;
+  searchQuery: string;
+  showFavoritesOnly: boolean;
+  hideNSFW: boolean;
+
+  // Actions
+  setChannels: (channels: ChannelWithStreams[]) => void;
+  setCategories: (categories: Category[]) => void;
+  setCountries: (countries: Country[]) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  setCategory: (category: string | null) => void;
+  setCountry: (country: string | null) => void;
+  setSearchQuery: (query: string) => void;
+  toggleFavoritesOnly: () => void;
+  toggleNSFW: () => void;
+
+  // Computed
+  filteredChannels: () => ChannelWithStreams[];
+}
+
+export const useChannelStore = create<ChannelState>()(
+  persist(
+    (set, get) => ({
+      channels: [],
+      categories: [],
+      countries: [],
+      isLoading: false,
+      error: null,
+      selectedCategory: null,
+      selectedCountry: null,
+      searchQuery: '',
+      showFavoritesOnly: false,
+      hideNSFW: true,
+
+      setChannels: (channels) => set({ channels }),
+      setCategories: (categories) => set({ categories }),
+      setCountries: (countries) => set({ countries }),
+      setLoading: (isLoading) => set({ isLoading }),
+      setError: (error) => set({ error }),
+      setCategory: (selectedCategory) => set({ selectedCategory }),
+      setCountry: (selectedCountry) => set({ selectedCountry }),
+      setSearchQuery: (searchQuery) => set({ searchQuery }),
+      toggleFavoritesOnly: () => set(state => ({ 
+        showFavoritesOnly: !state.showFavoritesOnly 
+      })),
+      toggleNSFW: () => set(state => ({ hideNSFW: !state.hideNSFW })),
+
+      filteredChannels: () => {
+        const state = get();
+        return state.channels.filter(channel => {
+          // Category filter
+          if (state.selectedCategory && 
+              !channel.categories.includes(state.selectedCategory)) {
+            return false;
+          }
+
+          // Country filter
+          if (state.selectedCountry && 
+              channel.country !== state.selectedCountry) {
+            return false;
+          }
+
+          // Search filter
+          if (state.searchQuery) {
+            const query = state.searchQuery.toLowerCase();
+            const nameMatch = channel.name.toLowerCase().includes(query);
+            const altMatch = channel.alt_names?.some(n => 
+              n.toLowerCase().includes(query)
+            );
+            if (!nameMatch && !altMatch) return false;
+          }
+
+          // NSFW filter
+          if (state.hideNSFW && channel.is_nsfw) return false;
+
+          return true;
+        });
+      }
+    }),
+    {
+      name: 'tvbanda-channels',
+      partialize: (state) => ({ 
+        selectedCategory: state.selectedCategory,
+        selectedCountry: state.selectedCountry,
+        hideNSFW: state.hideNSFW
+      })
+    }
+  )
+);
+```
+
+### Player Store
+```typescript
+// stores/usePlayerStore.ts
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface PlayerState {
+  currentChannel: ChannelWithStreams | null;
+  currentStreamIndex: number;
+  isFullscreen: boolean;
+  isTheaterMode: boolean;
+  volume: number;
+  isMuted: boolean;
+
+  setCurrentChannel: (channel: ChannelWithStreams | null) => void;
+  setCurrentStreamIndex: (index: number) => void;
+  toggleFullscreen: () => void;
+  toggleTheaterMode: () => void;
+  setVolume: (volume: number) => void;
+  toggleMute: () => void;
+  nextStream: () => void;
+  previousStream: () => void;
+}
+
+export const usePlayerStore = create<PlayerState>()(
+  persist(
+    (set, get) => ({
+      currentChannel: null,
+      currentStreamIndex: 0,
+      isFullscreen: false,
+      isTheaterMode: false,
+      volume: 1,
+      isMuted: false,
+
+      setCurrentChannel: (channel) => set({ 
+        currentChannel: channel,
+        currentStreamIndex: 0 
+      }),
+
+      setCurrentStreamIndex: (index) => set({ currentStreamIndex: index }),
+
+      toggleFullscreen: () => set(state => ({ 
+        isFullscreen: !state.isFullscreen 
+      })),
+
+      toggleTheaterMode: () => set(state => ({ 
+        isTheaterMode: !state.isTheaterMode 
+      })),
+
+      setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)) }),
+
+      toggleMute: () => set(state => ({ isMuted: !state.isMuted })),
+
+      nextStream: () => {
+        const { currentChannel, currentStreamIndex } = get();
+        if (!currentChannel) return;
+        const nextIndex = (currentStreamIndex + 1) % currentChannel.streams.length;
+        set({ currentStreamIndex: nextIndex });
+      },
+
+      previousStream: () => {
+        const { currentChannel, currentStreamIndex } = get();
+        if (!currentChannel) return;
+        const prevIndex = currentStreamIndex === 0 
+          ? currentChannel.streams.length - 1 
+          : currentStreamIndex - 1;
+        set({ currentStreamIndex: prevIndex });
+      }
+    }),
+    {
+      name: 'tvbanda-player',
+      partialize: (state) => ({ volume: state.volume, isMuted: state.isMuted })
+    }
+  )
+);
+```
+
+---
+
+## 🔧 Service Worker (PWA)
+
+```typescript
+// public/sw.js (Vite PWA will generate this, but here's the logic)
+const CACHE_NAME = 'tvbanda-v1';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png'
+];
+
+// Install event - cache static assets
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
+  self.skipWaiting();
+});
+
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+// Fetch event - network first, cache fallback for API
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // API calls - network first, cache fallback
+  if (url.hostname === 'iptv-org.github.io') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone);
+          });
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Static assets - cache first
+  event.respondWith(
+    caches.match(request).then((response) => {
+      return response || fetch(request);
+    })
+  );
+});
+```
+
+---
+
+## 🎨 Tailwind Configuration
+
+```javascript
+// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        background: {
+          DEFAULT: '#0a0a0a',
+          elevated: '#141414',
+          card: '#1a1a1a'
+        },
+        accent: {
+          DEFAULT: '#FFD700',
+          glow: 'rgba(255, 215, 0, 0.3)',
+          pulse: 'rgba(255, 215, 0, 0.6)'
+        },
+        text: {
+          primary: '#FFFFFF',
+          secondary: '#A0A0A0',
+          muted: '#606060'
+        }
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      backdropBlur: {
+        xs: '2px',
+      },
+      animation: {
+        'glow-pulse': 'glow-pulse 2s ease-in-out infinite',
+        'fade-in': 'fade-in 0.3s ease-out',
+        'slide-up': 'slide-up 0.3s ease-out',
+      },
+      keyframes: {
+        'glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 10px rgba(255,215,0,0.3)' },
+          '50%': { boxShadow: '0 0 30px rgba(255,215,0,0.6)' },
+        },
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'slide-up': {
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      },
+    },
+  },
+  plugins: [],
+}
+```
+
+---
+
+## 📱 Responsive Breakpoints Strategy
+
+```typescript
+// utils/responsive.ts
+export const BREAKPOINTS = {
+  mobile: 640,   // sm
+  tablet: 1024,  // lg
+  desktop: 1280  // xl
+};
+
+// Tailwind classes strategy
+const responsiveClasses = {
+  grid: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5',
+  sidebar: 'hidden lg:block w-64',
+  player: 'w-full lg:w-3/4 xl:w-2/3',
+  channelList: 'w-full lg:w-1/4 xl:w-1/3'
+};
+```
+
+---
+
+## 🚀 Performance Optimizations
+
+### 1. Code Splitting
+```typescript
+// Lazy load heavy components
+const VideoPlayer = lazy(() => import('./components/player/VideoPlayer'));
+const ChannelGrid = lazy(() => import('./components/channel/ChannelGrid'));
+
+// Suspense fallback
+<Suspense fallback={<LoadingSpinner />}>
+  <VideoPlayer />
+</Suspense>
+```
+
+### 2. Virtualization for Large Lists
+```typescript
+// Use react-window or react-virtualized for channel lists
+import { FixedSizeGrid as Grid } from 'react-window';
+
+<Grid
+  columnCount={columnCount}
+  columnWidth={200}
+  height={600}
+  rowCount={rowCount}
+  rowHeight={150}
+  width={1200}
+>
+  {ChannelCell}
+</Grid>
+```
+
+### 3. Image Optimization
+```typescript
+// Lazy load images with intersection observer
+const useLazyImage = (src: string) => {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = new Image();
+          img.src = src;
+          img.onload = () => setLoaded(true);
+          observer.disconnect();
+        }
+      });
+    });
+
+    if (imgRef.current) observer.observe(imgRef.current);
+    return () => observer.disconnect();
+  }, [src]);
+
+  return { ref: imgRef, loaded };
+};
+```
+
+---
+
+## 🧪 Testing Strategy
+
+### Unit Tests (Vitest)
+```typescript
+// tests/hooks/useHlsPlayer.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { useHlsPlayer } from '../../hooks/useHlsPlayer';
+
+describe('useHlsPlayer', () => {
+  it('should initialize with loading state', () => {
+    const { result } = renderHook(() => 
+      useHlsPlayer('https://example.com/stream.m3u8')
+    );
+    expect(result.current.isLoading).toBe(true);
+  });
+});
+```
+
+### E2E Tests (Playwright)
+```typescript
+// tests/e2e/player.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('player loads and plays channel', async ({ page }) => {
+  await page.goto('/');
+  await page.click('[data-testid="channel-card"]:first-child');
+  await expect(page.locator('video')).toBeVisible();
+  await page.click('[data-testid="play-button"]');
+  await expect(page.locator('[data-testid="playing-indicator"]')).toBeVisible();
+});
+```
+
+---
+
+## 📦 Build & Deployment
+
+### Vite Configuration
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'TVbanda',
+        short_name: 'TVbanda',
+        description: 'Watch live TV from around the world',
+        theme_color: '#0a0a0a',
+        background_color: '#0a0a0a',
+        icons: [
+          { src: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+        ]
+      }
+    })
+  ],
+  build: {
+    target: 'esnext',
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'hls': ['hls.js'],
+          'vendor': ['react', 'react-dom', 'zustand']
+        }
+      }
+    }
+  }
+});
+```
+
+---
+
+*TVbanda Architecture - Built for scale, designed for experience* 🏗️📺

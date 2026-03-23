@@ -1,0 +1,491 @@
+# TVbanda - Development Story (DS)
+## Sprint-by-Sprint Implementation Guide
+
+---
+
+## 🏃‍♂️ Sprint 1: Foundation & Core Player (Days 1-7)
+
+### Story 1.1: Project Setup & Architecture
+**As a** developer, **I want** to set up the project structure so that I can start building features immediately.
+
+#### Acceptance Criteria
+- [ ] Initialize React + TypeScript + Vite project
+- [ ] Configure Tailwind CSS with custom color scheme
+- [ ] Set up folder structure (components, hooks, services, stores, types)
+- [ ] Install dependencies: hls.js, framer-motion, lucide-react, zustand, axios
+- [ ] Configure ESLint + Prettier
+- [ ] Create base types (Channel, Stream, UserPreferences)
+
+#### Technical Tasks
+```bash
+# Commands to run
+npm create vite@latest tvbanda -- --template react-ts
+cd tvbanda
+npm install
+npm install hls.js framer-motion lucide-react zustand axios
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+```
+
+**Estimation:** 4 hours  
+**Priority:** Critical
+
+---
+
+### Story 1.2: Design System Implementation
+**As a** developer, **I want** to implement the dark glassmorphism UI so that the app has a consistent visual identity.
+
+#### Acceptance Criteria
+- [ ] Create color palette constants (yellow neon accents, dark backgrounds)
+- [ ] Build reusable GlassCard component with backdrop blur
+- [ ] Create NeonButton component with glow effects
+- [ ] Implement typography system (Inter/Roboto font)
+- [ ] Build ChannelCard component skeleton
+- [ ] Create loading shimmer effects
+
+#### Code Reference
+```typescript
+// components/ui/GlassCard.tsx
+interface GlassCardProps {
+  children: React.ReactNode;
+  className?: string;
+  glow?: boolean;
+}
+
+export const GlassCard: React.FC<GlassCardProps> = ({ 
+  children, 
+  className = '',
+  glow = false 
+}) => (
+  <div className={`
+    bg-[#141414]/70 
+    backdrop-blur-xl 
+    border border-white/10 
+    rounded-2xl 
+    ${glow ? 'shadow-[0_0_30px_rgba(255,215,0,0.15)]' : 'shadow-xl'}
+    ${className}
+  `}>
+    {children}
+  </div>
+);
+```
+
+**Estimation:** 6 hours  
+**Priority:** High
+
+---
+
+### Story 1.3: IPTV Data Service Layer
+**As a** developer, **I want** to create a service layer for fetching IPTV data so that the app can display channels from iptv-org.
+
+#### Acceptance Criteria
+- [ ] Create iptvService with methods: getChannels(), getStreams(), getCategories()
+- [ ] Implement API endpoints from iptv-org/api
+- [ ] Add data transformation (merge channels + streams)
+- [ ] Create custom hook: useChannels()
+- [ ] Implement caching with localStorage (24hr TTL)
+- [ ] Add error handling for failed requests
+
+#### API Endpoints to Use
+```typescript
+const API_BASE = 'https://iptv-org.github.io/api';
+
+endpoints = {
+  channels: `${API_BASE}/channels.json`,
+  streams: `${API_BASE}/streams.json`,
+  categories: `${API_BASE}/categories.json`,
+  countries: `${API_BASE}/countries.json`,
+  languages: `${API_BASE}/languages.json`
+};
+```
+
+**Estimation:** 6 hours  
+**Priority:** Critical
+
+---
+
+### Story 1.4: Video Player Core
+**As a** user, **I want** to watch M3U8 streams so that I can view live TV content.
+
+#### Acceptance Criteria
+- [ ] Integrate hls.js for HLS playback
+- [ ] Create VideoPlayer component with custom controls
+- [ ] Implement play/pause functionality
+- [ ] Add volume control (0-100%)
+- [ ] Create fullscreen toggle
+- [ ] Display loading spinner while buffering
+- [ ] Show error message for failed streams
+
+#### Technical Implementation
+```typescript
+// hooks/useHlsPlayer.ts
+import Hls from 'hls.js';
+
+export const useHlsPlayer = (videoRef: RefObject<HTMLVideoElement>, src: string) => {
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    let hls: Hls | null = null;
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90
+      });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+    }
+
+    return () => hls?.destroy();
+  }, [src]);
+};
+```
+
+**Estimation:** 8 hours  
+**Priority:** Critical
+
+---
+
+### Story 1.5: Channel Grid Layout
+**As a** user, **I want** to browse channels in a grid so that I can discover content easily.
+
+#### Acceptance Criteria
+- [ ] Create responsive grid layout (1 col mobile, 2-3 tablet, 4-6 desktop)
+- [ ] Display channel logo, name, and category
+- [ ] Show "Live" indicator for active streams
+- [ ] Implement hover effects (scale + glow)
+- [ ] Add click handler to play channel
+- [ ] Create skeleton loading state
+
+**Estimation:** 5 hours  
+**Priority:** High
+
+---
+
+## 🏃‍♂️ Sprint 2: Filtering & Search (Days 8-14)
+
+### Story 2.1: Category Filtering
+**As a** user, **I want** to filter channels by category so that I can find specific content types.
+
+#### Acceptance Criteria
+- [ ] Fetch categories from API
+- [ ] Create horizontal scrollable category list
+- [ ] Highlight active category with yellow accent
+- [ ] Filter channel grid by selected category
+- [ ] Show "All" option to reset filter
+- [ ] Persist filter in URL query params
+
+#### Categories to Include
+```typescript
+const CATEGORIES = [
+  'News', 'Sports', 'Movies', 'Entertainment', 
+  'Music', 'Documentary', 'Kids', 'Education',
+  'Lifestyle', 'Shopping', 'Religious', 'Science'
+];
+```
+
+**Estimation:** 4 hours  
+**Priority:** High
+
+---
+
+### Story 2.2: Country/Region Filtering
+**As a** user, **I want** to filter by country so that I can find content from specific regions.
+
+#### Acceptance Criteria
+- [ ] Fetch countries from API with flag emojis
+- [ ] Create dropdown/select for country filter
+- [ ] Display country flag in channel cards
+- [ ] Filter channels by selected country
+- [ ] Add "International" category for global channels
+
+**Estimation:** 4 hours  
+**Priority:** Medium
+
+---
+
+### Story 2.3: Search Functionality
+**As a** user, **I want** to search for channels by name so that I can quickly find specific content.
+
+#### Acceptance Criteria
+- [ ] Create search input with debounce (300ms)
+- [ ] Search across channel names and alt_names
+- [ ] Show "No results" state with helpful message
+- [ ] Highlight search term in results
+- [ ] Clear search button
+- [ ] Keyboard shortcut: Cmd/Ctrl + K to focus search
+
+**Estimation:** 4 hours  
+**Priority:** High
+
+---
+
+### Story 2.4: Favorites System
+**As a** user, **I want** to save favorite channels so that I can quickly access preferred content.
+
+#### Acceptance Criteria
+- [ ] Add heart/star icon to channel cards
+- [ ] Toggle favorite on click
+- [ ] Store favorites in localStorage
+- [ ] Create "Favorites" filter category
+- [ ] Show favorites count in UI
+- [ ] Persist favorites across sessions
+
+**Estimation:** 3 hours  
+**Priority:** Medium
+
+---
+
+## 🏃‍♂️ Sprint 3: Enhanced Player & UX (Days 15-21)
+
+### Story 3.1: Advanced Player Controls
+**As a** user, **I want** advanced playback controls so that I have full control over my viewing experience.
+
+#### Acceptance Criteria
+- [ ] Custom progress bar (seek functionality)
+- [ ] Volume slider with mute toggle
+- [ ] Settings menu (quality selection if available)
+- [ ] Picture-in-Picture button
+- [ ] Keyboard shortcuts overlay ("?" key)
+- [ ] Double-click to toggle fullscreen
+
+#### Keyboard Shortcuts
+```typescript
+const SHORTCUTS = {
+  'Space': 'Play/Pause',
+  'F': 'Fullscreen',
+  'M': 'Mute',
+  'ArrowUp': 'Volume Up',
+  'ArrowDown': 'Volume Down',
+  '?': 'Show Shortcuts'
+};
+```
+
+**Estimation:** 6 hours  
+**Priority:** Medium
+
+---
+
+### Story 3.2: Stream Health & Error Handling
+**As a** user, **I want** clear feedback when streams fail so that I understand what's happening.
+
+#### Acceptance Criteria
+- [ ] Detect stream loading failures
+- [ ] Show retry button with countdown
+- [ ] Display "Stream Offline" message
+- [ ] Auto-retry failed streams (3 attempts)
+- [ ] Fallback to alternative stream sources
+- [ ] Log stream errors for debugging
+
+**Estimation:** 5 hours  
+**Priority:** High
+
+---
+
+### Story 3.3: Recently Watched
+**As a** user, **I want** to see my recently watched channels so that I can quickly resume viewing.
+
+#### Acceptance Criteria
+- [ ] Track channel views in localStorage
+- [ ] Store last 10 viewed channels
+- [ ] Create "Continue Watching" section
+- [ ] Show timestamp of last view
+- [ ] Auto-play last channel on app start (optional)
+
+**Estimation:** 3 hours  
+**Priority:** Low
+
+---
+
+### Story 3.4: Responsive Mobile Experience
+**As a** mobile user, **I want** a touch-optimized interface so that I can use the app on my phone.
+
+#### Acceptance Criteria
+- [ ] Bottom navigation bar for mobile
+- [ ] Touch-friendly button sizes (min 44px)
+- [ ] Swipe gestures for channel navigation
+- [ ] Mobile-optimized player (fullscreen default)
+- [ ] Collapsible sidebar into drawer
+- [ ] Pull-to-refresh for channel list
+
+**Estimation:** 6 hours  
+**Priority:** High
+
+---
+
+## 🏃‍♂️ Sprint 4: Performance & Polish (Days 22-28)
+
+### Story 4.1: Caching & Performance
+**As a** developer, **I want** to optimize data loading so that the app feels fast and responsive.
+
+#### Acceptance Criteria
+- [ ] Implement Service Worker for offline support
+- [ ] Cache channel data (24-hour expiration)
+- [ ] Cache channel logos (persistent)
+- [ ] Lazy load channel grid (virtualization)
+- [ ] Image optimization (WebP format)
+- [ ] Preload next channel on hover
+
+**Estimation:** 6 hours  
+**Priority:** High
+
+---
+
+### Story 4.2: PWA Support
+**As a** user, **I want** to install the app on my device so that I can access it like a native app.
+
+#### Acceptance Criteria
+- [ ] Create manifest.json with app metadata
+- [ ] Add icons for all platforms
+- [ ] Implement "Add to Home Screen" prompt
+- [ ] Configure Service Worker for offline mode
+- [ ] Test installation on Android/iOS
+- [ ] Handle offline state gracefully
+
+**Estimation:** 4 hours  
+**Priority:** Medium
+
+---
+
+### Story 4.3: Animations & Micro-interactions
+**As a** user, **I want** smooth animations so that the app feels premium and modern.
+
+#### Acceptance Criteria
+- [ ] Page transition animations
+- [ ] Channel card hover effects (scale + glow)
+- [ ] Player controls fade in/out
+- [ ] Loading spinner animations
+- [ ] Stagger animation for channel grid
+- [ ] Yellow neon pulse for "Live" indicator
+
+#### Animation Specs
+```typescript
+const ANIMATIONS = {
+  cardHover: { scale: 1.05, transition: { duration: 0.2 } },
+  pageTransition: { opacity: [0, 1], duration: 0.3 },
+  stagger: { staggerChildren: 0.05 },
+  glowPulse: { 
+    boxShadow: [
+      '0 0 10px rgba(255,215,0,0.3)',
+      '0 0 30px rgba(255,215,0,0.6)',
+      '0 0 10px rgba(255,215,0,0.3)'
+    ],
+    transition: { repeat: Infinity, duration: 2 }
+  }
+};
+```
+
+**Estimation:** 5 hours  
+**Priority:** Medium
+
+---
+
+### Story 4.4: Testing & QA
+**As a** developer, **I want** comprehensive testing so that the app is stable and bug-free.
+
+#### Acceptance Criteria
+- [ ] Unit tests for utility functions
+- [ ] Component tests for UI elements
+- [ ] Integration tests for player functionality
+- [ ] Cross-browser testing (Chrome, Firefox, Safari)
+- [ ] Mobile device testing
+- [ ] Performance audit (Lighthouse >90)
+
+**Estimation:** 8 hours  
+**Priority:** Critical
+
+---
+
+## 🏃‍♂️ Sprint 5: Launch Preparation (Days 29-35)
+
+### Story 5.1: SEO & Meta Tags
+**As a** product owner, **I want** proper SEO so that users can discover the app via search engines.
+
+#### Acceptance Criteria
+- [ ] Add meta description and keywords
+- [ ] Create Open Graph tags for social sharing
+- [ ] Generate sitemap.xml
+- [ ] Add robots.txt
+- [ ] Implement structured data (JSON-LD)
+- [ ] Optimize for Core Web Vitals
+
+**Estimation:** 3 hours  
+**Priority:** Medium
+
+---
+
+### Story 5.2: Analytics Integration
+**As a** product owner, **I want** usage analytics so that I can understand user behavior.
+
+#### Acceptance Criteria
+- [ ] Integrate privacy-focused analytics (Plausible)
+- [ ] Track channel views (anonymized)
+- [ ] Track search queries (anonymized)
+- [ ] Track feature usage
+- [ ] Create dashboard for metrics
+- [ ] Ensure GDPR compliance
+
+**Estimation:** 3 hours  
+**Priority:** Low
+
+---
+
+### Story 5.3: Documentation & Deployment
+**As a** developer, **I want** clear documentation so that the app can be maintained and deployed easily.
+
+#### Acceptance Criteria
+- [ ] Write README.md with setup instructions
+- [ ] Document component API
+- [ ] Create deployment guide
+- [ ] Set up GitHub Actions for CI/CD
+- [ ] Deploy to Vercel/Netlify
+- [ ] Configure custom domain (tvbanda.com)
+
+**Estimation:** 4 hours  
+**Priority:** Critical
+
+---
+
+## 📊 Sprint Summary
+
+| Sprint | Focus | Duration | Story Points |
+|--------|-------|----------|--------------|
+| Sprint 1 | Foundation & Core Player | 7 days | 29 pts |
+| Sprint 2 | Filtering & Search | 7 days | 15 pts |
+| Sprint 3 | Enhanced Player & UX | 7 days | 20 pts |
+| Sprint 4 | Performance & Polish | 7 days | 21 pts |
+| Sprint 5 | Launch Preparation | 7 days | 10 pts |
+| **Total** | | **35 days** | **95 pts** |
+
+---
+
+## 🎯 Definition of Done
+
+For each story to be considered complete:
+1. ✅ Code implemented and reviewed
+2. ✅ Unit tests passing (coverage >80%)
+3. ✅ Acceptance criteria met
+4. ✅ Cross-browser tested
+5. ✅ Mobile responsive verified
+6. ✅ No console errors
+7. ✅ Lighthouse score >90
+8. ✅ Documentation updated
+
+---
+
+## 🚀 Post-Launch Stories (Backlog)
+
+- **BL-001:** EPG Integration (Electronic Program Guide)
+- **BL-002:** Chromecast Support
+- **BL-003:** User Accounts (optional)
+- **BL-004:** Custom Playlist Import
+- **BL-005:** AI-Powered Recommendations
+- **BL-006:** Multi-language UI Support
+
+---
+
+*TVbanda Development Story - Building the future of streaming* 🚀📺

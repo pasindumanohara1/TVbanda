@@ -1,0 +1,752 @@
+# TVbanda - Quick Dev Guide (QD)
+## Fast-Track Implementation for Developers
+
+---
+
+## 🚀 Quick Start (5 Minutes)
+
+### Step 1: Project Initialization
+```bash
+# Create project
+npm create vite@latest tvbanda -- --template react-ts
+cd tvbanda
+
+# Install core dependencies
+npm install hls.js framer-motion lucide-react zustand axios
+npm install -D tailwindcss postcss autoprefixer
+
+# Initialize Tailwind
+npx tailwindcss init -p
+```
+
+### Step 2: Configure Tailwind
+```javascript
+// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        background: { DEFAULT: '#0a0a0a', elevated: '#141414' },
+        accent: { DEFAULT: '#FFD700', glow: 'rgba(255,215,0,0.3)' }
+      }
+    }
+  },
+  plugins: []
+}
+```
+
+### Step 3: Add Global Styles
+```css
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-white antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-[#141414]/70 backdrop-blur-xl border border-white/10 rounded-2xl;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .neon-glow {
+    box-shadow: 0 0 20px rgba(255,215,0,0.3);
+  }
+
+  .channel-card {
+    @apply relative overflow-hidden rounded-xl transition-all duration-300;
+  }
+
+  .channel-card:hover {
+    @apply scale-105;
+    box-shadow: 0 0 30px rgba(255,215,0,0.2);
+  }
+}
+```
+
+---
+
+## 📦 Core Components (Copy-Paste Ready)
+
+### 1. GlassCard Component
+```tsx
+// src/components/ui/GlassCard.tsx
+import React from 'react';
+
+interface GlassCardProps {
+  children: React.ReactNode;
+  className?: string;
+  glow?: boolean;
+}
+
+export const GlassCard: React.FC<GlassCardProps> = ({ 
+  children, 
+  className = '',
+  glow = false 
+}) => (
+  <div className={`
+    bg-[#141414]/70 backdrop-blur-xl border border-white/10 rounded-2xl p-6
+    transition-all duration-300
+    ${glow ? 'shadow-[0_0_30px_rgba(255,215,0,0.15)]' : 'shadow-xl'}
+    ${className}
+  `}>
+    {children}
+  </div>
+);
+```
+
+### 2. Video Player with hls.js
+```tsx
+// src/components/player/VideoPlayer.tsx
+import React, { useRef, useEffect, useState } from 'react';
+import Hls from 'hls.js';
+import { Play, Pause, Volume2, Maximize, Loader } from 'lucide-react';
+
+interface VideoPlayerProps {
+  src: string;
+  className?: string;
+}
+
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, className }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    let hls: Hls | null = null;
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        manifestLoadingTimeOut: 10000,
+        manifestLoadingMaxRetry: 2
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setIsLoading(false);
+        video.play().catch(() => setIsPlaying(false));
+      });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          setError('Stream failed to load. Try another channel.');
+          setIsLoading(false);
+        }
+      });
+
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+        setIsLoading(false);
+        video.play();
+      });
+    }
+
+    return () => hls?.destroy();
+  }, [src]);
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (videoRef.current) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        videoRef.current.requestFullscreen();
+      }
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="glass-panel flex items-center justify-center h-64">
+        <p className="text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative group ${className}`}>
+      <video
+        ref={videoRef}
+        className="w-full h-full rounded-xl bg-black"
+        playsInline
+        onClick={togglePlay}
+      />
+
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
+          <Loader className="w-10 h-10 text-accent animate-spin" />
+        </div>
+      )}
+
+      {/* Controls Overlay */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-4">
+          <button onClick={togglePlay} className="text-white hover:text-accent">
+            {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+          </button>
+
+          <button onClick={toggleMute} className="text-white hover:text-accent">
+            <Volume2 size={24} className={isMuted ? 'opacity-50' : ''} />
+          </button>
+
+          <div className="flex-1" />
+
+          <button onClick={toggleFullscreen} className="text-white hover:text-accent">
+            <Maximize size={24} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+### 3. Channel Card
+```tsx
+// src/components/channel/ChannelCard.tsx
+import React from 'react';
+import { Heart, Globe } from 'lucide-react';
+
+interface Channel {
+  id: string;
+  name: string;
+  logo?: string;
+  country: string;
+  categories: string[];
+  isFavorite?: boolean;
+}
+
+interface ChannelCardProps {
+  channel: Channel;
+  isActive?: boolean;
+  onClick: () => void;
+  onToggleFavorite: () => void;
+}
+
+export const ChannelCard: React.FC<ChannelCardProps> = ({
+  channel,
+  isActive = false,
+  onClick,
+  onToggleFavorite
+}) => (
+  <div
+    onClick={onClick}
+    className={`
+      channel-card cursor-pointer p-4 glass-panel
+      ${isActive ? 'ring-2 ring-accent neon-glow' : ''}
+    `}
+  >
+    <div className="flex items-start justify-between mb-3">
+      <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center overflow-hidden">
+        {channel.logo ? (
+          <img 
+            src={channel.logo} 
+            alt={channel.name}
+            className="w-full h-full object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <Globe className="w-6 h-6 text-text-secondary" />
+        )}
+      </div>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite();
+        }}
+        className={`
+          p-2 rounded-full transition-colors
+          ${channel.isFavorite ? 'text-accent' : 'text-text-secondary hover:text-accent'}
+        `}
+      >
+        <Heart className={channel.isFavorite ? 'fill-current' : ''} size={18} />
+      </button>
+    </div>
+
+    <h3 className="font-semibold text-white truncate">{channel.name}</h3>
+    <p className="text-sm text-text-secondary">{channel.categories[0]}</p>
+
+    {isActive && (
+      <div className="absolute top-2 right-2">
+        <span className="flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-accent" />
+        </span>
+      </div>
+    )}
+  </div>
+);
+```
+
+### 4. IPTV Service (API Layer)
+```typescript
+// src/services/iptvService.ts
+const API_BASE = 'https://iptv-org.github.io/api';
+
+export interface Channel {
+  id: string;
+  name: string;
+  alt_names?: string[];
+  country: string;
+  categories: string[];
+  is_nsfw: boolean;
+  logo?: string;
+}
+
+export interface Stream {
+  channel?: string;
+  title: string;
+  url: string;
+  referrer?: string;
+  user_agent?: string;
+  quality?: string;
+}
+
+class IPTVService {
+  async getChannels(): Promise<Channel[]> {
+    const response = await fetch(`${API_BASE}/channels.json`);
+    const data = await response.json();
+    return data.channels.filter((c: Channel) => !c.is_nsfw);
+  }
+
+  async getStreams(): Promise<Stream[]> {
+    const response = await fetch(`${API_BASE}/streams.json`);
+    const data = await response.json();
+    return data.streams;
+  }
+
+  async getChannelsWithStreams(): Promise<(Channel & { streams: Stream[] })[]> {
+    const [channels, streams] = await Promise.all([
+      this.getChannels(),
+      this.getStreams()
+    ]);
+
+    const streamsByChannel = streams.reduce((acc, stream) => {
+      if (stream.channel) {
+        acc[stream.channel] = acc[stream.channel] || [];
+        acc[stream.channel].push(stream);
+      }
+      return acc;
+    }, {} as Record<string, Stream[]>);
+
+    return channels
+      .map(channel => ({
+        ...channel,
+        streams: streamsByChannel[channel.id] || []
+      }))
+      .filter(c => c.streams.length > 0);
+  }
+}
+
+export const iptvService = new IPTVService();
+```
+
+### 5. Main App Component
+```tsx
+// src/App.tsx
+import React, { useEffect, useState, useCallback } from 'react';
+import { iptvService, Channel, Stream } from './services/iptvService';
+import { VideoPlayer } from './components/player/VideoPlayer';
+import { ChannelCard } from './components/channel/ChannelCard';
+import { GlassCard } from './components/ui/GlassCard';
+import { Search, Tv, Heart } from 'lucide-react';
+
+interface ChannelWithStreams extends Channel {
+  streams: Stream[];
+  isFavorite?: boolean;
+}
+
+function App() {
+  const [channels, setChannels] = useState<ChannelWithStreams[]>([]);
+  const [filteredChannels, setFilteredChannels] = useState<ChannelWithStreams[]>([]);
+  const [currentChannel, setCurrentChannel] = useState<ChannelWithStreams | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load data
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const data = await iptvService.getChannelsWithStreams();
+        setChannels(data);
+        setFilteredChannels(data);
+
+        // Load favorites from localStorage
+        const saved = localStorage.getItem('tvbanda_favorites');
+        if (saved) setFavorites(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load channels:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Filter channels
+  useEffect(() => {
+    let filtered = channels;
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(c => 
+        c.name.toLowerCase().includes(query) ||
+        c.alt_names?.some(n => n.toLowerCase().includes(query))
+      );
+    }
+
+    if (showFavorites) {
+      filtered = filtered.filter(c => favorites.includes(c.id));
+    }
+
+    setFilteredChannels(filtered);
+  }, [channels, searchQuery, showFavorites, favorites]);
+
+  const toggleFavorite = useCallback((channelId: string) => {
+    setFavorites(prev => {
+      const newFavorites = prev.includes(channelId)
+        ? prev.filter(id => id !== channelId)
+        : [...prev, channelId];
+      localStorage.setItem('tvbanda_favorites', JSON.stringify(newFavorites));
+      return newFavorites;
+    });
+  }, []);
+
+  const handleChannelClick = (channel: ChannelWithStreams) => {
+    setCurrentChannel(channel);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Tv className="w-16 h-16 text-accent mx-auto mb-4 animate-pulse" />
+          <h1 className="text-2xl font-bold text-white">TVbanda</h1>
+          <p className="text-text-secondary">Loading channels...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 glass-panel border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Tv className="w-8 h-8 text-accent" />
+            <h1 className="text-xl font-bold text-white">TVbanda</h1>
+          </div>
+
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+              <input
+                type="text"
+                placeholder="Search channels..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-text-secondary focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowFavorites(!showFavorites)}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-xl transition-colors
+              ${showFavorites ? 'bg-accent text-black' : 'bg-white/5 text-white hover:bg-white/10'}
+            `}
+          >
+            <Heart className={showFavorites ? 'fill-current' : ''} size={18} />
+            <span className="hidden sm:inline">Favorites</span>
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Player Section */}
+          <div className="lg:col-span-2 space-y-4">
+            {currentChannel ? (
+              <>
+                <GlassCard glow>
+                  <VideoPlayer 
+                    src={currentChannel.streams[0]?.url} 
+                    className="aspect-video"
+                  />
+                </GlassCard>
+
+                <GlassCard>
+                  <h2 className="text-xl font-bold text-white">{currentChannel.name}</h2>
+                  <p className="text-text-secondary">
+                    {currentChannel.categories.join(', ')} • {currentChannel.country}
+                  </p>
+                  {currentChannel.streams.length > 1 && (
+                    <div className="mt-4 flex gap-2">
+                      {currentChannel.streams.map((stream, idx) => (
+                        <button
+                          key={idx}
+                          className="px-3 py-1 bg-white/5 rounded-lg text-sm text-white hover:bg-accent hover:text-black transition-colors"
+                        >
+                          {stream.quality || `Source ${idx + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </GlassCard>
+              </>
+            ) : (
+              <GlassCard className="aspect-video flex items-center justify-center">
+                <div className="text-center">
+                  <Tv className="w-16 h-16 text-text-secondary mx-auto mb-4" />
+                  <p className="text-text-secondary">Select a channel to start watching</p>
+                </div>
+              </GlassCard>
+            )}
+          </div>
+
+          {/* Channel List */}
+          <div className="lg:col-span-1">
+            <GlassCard className="h-[calc(100vh-200px)] overflow-hidden">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                {showFavorites ? 'Favorite Channels' : 'All Channels'}
+                <span className="ml-2 text-sm text-text-secondary">
+                  ({filteredChannels.length})
+                </span>
+              </h3>
+
+              <div className="overflow-y-auto h-full pb-20 space-y-3">
+                {filteredChannels.map(channel => (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={{
+                      ...channel,
+                      isFavorite: favorites.includes(channel.id)
+                    }}
+                    isActive={currentChannel?.id === channel.id}
+                    onClick={() => handleChannelClick(channel)}
+                    onToggleFavorite={() => toggleFavorite(channel.id)}
+                  />
+                ))}
+
+                {filteredChannels.length === 0 && (
+                  <p className="text-text-secondary text-center py-8">
+                    {showFavorites ? 'No favorites yet' : 'No channels found'}
+                  </p>
+                )}
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+```
+
+---
+
+## 🎯 Quick Commands
+
+### Development
+```bash
+# Start dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+### Deployment (Vercel)
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+```
+
+### Deployment (Netlify)
+```bash
+# Build first
+npm run build
+
+# Deploy dist folder
+netlify deploy --prod --dir=dist
+```
+
+---
+
+## 🔧 Essential Config Files
+
+### tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+```
+
+### vite.config.ts
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    target: 'esnext'
+  }
+});
+```
+
+---
+
+## 🐛 Common Issues & Solutions
+
+### Issue: CORS errors when loading streams
+**Solution:** Use a CORS proxy or ensure streams support CORS
+```typescript
+// Add proxy for problematic streams
+const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+const streamUrl = proxyUrl + originalUrl;
+```
+
+### Issue: HLS not supported in some browsers
+**Solution:** hls.js handles this automatically, but verify:
+```typescript
+if (Hls.isSupported()) {
+  // Use hls.js
+} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+  // Native HLS (Safari)
+} else {
+  // Show error message
+}
+```
+
+### Issue: Large channel list causes lag
+**Solution:** Implement virtualization
+```bash
+npm install react-window
+```
+
+---
+
+## 📱 PWA Quick Setup
+
+```bash
+# Install PWA plugin
+npm install -D vite-plugin-pwa
+
+# Update vite.config.ts
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'TVbanda',
+        short_name: 'TVbanda',
+        theme_color: '#0a0a0a',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+        ]
+      }
+    })
+  ]
+});
+```
+
+---
+
+## 🎨 Color Reference
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `bg-background` | `#0a0a0a` | Main background |
+| `bg-elevated` | `#141414` | Cards, panels |
+| `text-accent` | `#FFD700` | Buttons, active states |
+| `text-white` | `#FFFFFF` | Primary text |
+| `text-secondary` | `#A0A0A0` | Secondary text |
+
+---
+
+## 🚀 Next Steps
+
+1. ✅ Basic player working
+2. ➡️ Add category filtering
+3. ➡️ Add country filtering
+4. ➡️ Implement EPG (Electronic Program Guide)
+5. ➡️ Add Chromecast support
+6. ➡️ Mobile app (React Native/Expo)
+
+---
+
+*TVbanda Quick Dev - From zero to streaming in 30 minutes* ⚡📺

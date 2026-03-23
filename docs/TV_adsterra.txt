@@ -1,0 +1,37 @@
+Popunder
+<script src="https://pl28963428.profitablecpmratenetwork.com/62/02/53/620253ef8bbcb5cce16dca0e9c0df454.js"></script>
+
+Native Banner
+<script async="async" data-cfasync="false" src="https://pl28963431.profitablecpmratenetwork.com/7d4f7bc93926bde082b869a4c0ee1a1c/invoke.js"></script>
+<div id="container-7d4f7bc93926bde082b869a4c0ee1a1c"></div>
+
+Banner 728x90
+<script>
+  atOptions = {
+    'key' : '13f611862530e5d2b1733b67657704e5',
+    'format' : 'iframe',
+    'height' : 90,
+    'width' : 728,
+    'params' : {}
+  };
+</script>
+<script src="https://www.highperformanceformat.com/13f611862530e5d2b1733b67657704e5/invoke.js"></script>
+
+Social Bar
+<script src="https://pl28963434.profitablecpmratenetwork.com/23/6d/00/236d007405235e81c2bcaabe2eab93c0.js"></script>
+
+Banner 468x60<script>
+  atOptions = {
+    'key' : '201267a221c3333b3423fd09173a2f19',
+    'format' : 'iframe',
+    'height' : 60,
+    'width' : 468,
+    'params' : {}
+  };
+</script>
+<script src="https://www.highperformanceformat.com/201267a221c3333b3423fd09173a2f19/invoke.js"></script>
+
+
+
+smart link 
+https://omg10.com/4/9060184

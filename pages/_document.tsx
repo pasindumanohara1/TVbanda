@@ -5,6 +5,7 @@ export default function Document() {
     <Html lang="en">
       <Head>
         <meta name="monetag" content="7b4aef6bd83e02ddc4f59fa549cd5d61" />
+        <script src="https://quge5.com/88/tag.min.js" data-zone="222457" async data-cfasync="false"></script>
         
         {/* SEO Meta Tags */}
         <meta name="description" content="TVbanda - Watch live TV channels from around the world. Free IPTV streaming with movies, sports, news, and more." />

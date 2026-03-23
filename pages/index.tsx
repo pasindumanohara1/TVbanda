@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { Loader2, Tv, Globe, Film, ChevronRight } from 'lucide-react';
+import { Loader2, Tv, Globe, Film, ChevronRight, Download, Play, Star, Heart, Share2 } from 'lucide-react';
 import { useChannelStore, useFavoritesStore } from '@/stores/channelStore';
 import { iptvService } from '@/services/iptvService';
 import { ChannelWithStreams } from '@/types';
@@ -149,6 +149,35 @@ export default function Home() {
           <span><Globe size={16} /> {countries.length}+ Countries</span>
           <span><Film size={16} /> {categories.length} Categories</span>
         </div>
+      </section>
+
+      <section className="download-section">
+        <h2>📲 Get Our App</h2>
+        <p>Download our app for a better experience</p>
+        <div className="download-buttons">
+          <a href="https://omg10.com/4/9060184" target="_blank" rel="noopener noreferrer" className="download-btn primary">
+            <Download size={20} />
+            <div>
+              <span className="btn-title">Download APK</span>
+              <span className="btn-subtitle">Latest Version</span>
+            </div>
+          </a>
+          <a href="https://omg10.com/4/9060184" target="_blank" rel="noopener noreferrer" className="download-btn secondary">
+            <Play size={20} />
+            <div>
+              <span className="btn-title">Watch Demo</span>
+              <span className="btn-subtitle">See in action</span>
+            </div>
+          </a>
+        </div>
+        <div className="app-features">
+          <span><Star size={14} /> 4.8 Rating</span>
+          <span><Download size={14} /> 100K+ Downloads</span>
+          <span><Heart size={14} /> 50K+ Likes</span>
+        </div>
+        <a href="https://omg10.com/4/9060184" target="_blank" rel="noopener noreferrer" className="share-link">
+          <Share2 size={16} /> Share with friends
+        </a>
       </section>
 
       <div className="ad-banner-mid desktop-only">
